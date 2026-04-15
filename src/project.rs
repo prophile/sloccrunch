@@ -15,12 +15,31 @@ pub(crate) struct ProjectTotals {
     pub(crate) by_language: HashMap<String, usize>,
 }
 
+impl ProjectTotals {
+    fn merge(&mut self, other: ProjectTotals) {
+        self.total_sloc += other.total_sloc;
+        for (language, sloc) in other.by_language {
+            *self.by_language.entry(language).or_default() += sloc;
+        }
+    }
+}
+
 struct FileStats {
     language: &'static str,
     sloc: usize,
 }
 
-pub(crate) fn count_project(root: &Path, threads: usize) -> io::Result<ProjectTotals> {
+pub(crate) fn count_projects(roots: &[PathBuf], threads: usize) -> io::Result<ProjectTotals> {
+    let mut aggregate = ProjectTotals::default();
+
+    for root in roots {
+        aggregate.merge(count_single_project(root, threads)?);
+    }
+
+    Ok(aggregate)
+}
+
+fn count_single_project(root: &Path, threads: usize) -> io::Result<ProjectTotals> {
     let mut totals = ProjectTotals::default();
     let walker = WalkBuilder::new(root)
         .hidden(false)
@@ -140,7 +159,7 @@ fn join_workers(workers: Vec<thread::JoinHandle<()>>) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::count_project;
+    use super::count_projects;
     use std::ffi::OsStr;
     use std::fs;
     use std::io;
@@ -157,7 +176,7 @@ mod tests {
         fixture.write("README.md", "# title\nbody\n")?;
         fixture.write("nested/skip.rs", "fn also_skipped() {}\n")?;
 
-        let totals = count_project(fixture.path(), 2)?;
+        let totals = count_projects(&[fixture.path().to_path_buf()], 2)?;
 
         assert_eq!(totals.total_sloc, 6);
         assert_eq!(totals.by_language.get("Rust"), Some(&6));
@@ -174,7 +193,7 @@ mod tests {
             "export const answer: number = 42;\nfunction greet(name: string): string {\n  return name;\n}\n",
         )?;
 
-        let totals = count_project(fixture.path(), 2)?;
+        let totals = count_projects(&[fixture.path().to_path_buf()], 2)?;
 
         assert_eq!(totals.total_sloc, 4);
         assert_eq!(totals.by_language.get("TypeScript"), Some(&4));
@@ -187,10 +206,30 @@ mod tests {
         let fixture = TempProject::new()?;
         fixture.write(".hidden.rs", "fn visible() {}\n")?;
 
-        let totals = count_project(fixture.path(), 2)?;
+        let totals = count_projects(&[fixture.path().to_path_buf()], 2)?;
 
         assert_eq!(totals.total_sloc, 1);
         assert_eq!(totals.by_language.get("Rust"), Some(&1));
+
+        Ok(())
+    }
+
+    #[test]
+    fn aggregates_multiple_roots() -> io::Result<()> {
+        let first = TempProject::new()?;
+        first.write("src/main.rs", "fn main() {}\n")?;
+
+        let second = TempProject::new()?;
+        second.write("src/index.js", "export const answer = 42;\n")?;
+
+        let totals = count_projects(
+            &[first.path().to_path_buf(), second.path().to_path_buf()],
+            2,
+        )?;
+
+        assert_eq!(totals.total_sloc, 2);
+        assert_eq!(totals.by_language.get("Rust"), Some(&1));
+        assert_eq!(totals.by_language.get("JavaScript"), Some(&1));
 
         Ok(())
     }

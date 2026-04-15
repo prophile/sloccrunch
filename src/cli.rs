@@ -9,8 +9,8 @@ use clap::{ArgAction, Parser};
     about = "Count source lines of code in a directory tree"
 )]
 pub(crate) struct Cli {
-    #[arg(default_value = ".")]
-    pub(crate) path: PathBuf,
+    #[arg(default_value = ".", num_args = 1..)]
+    pub(crate) paths: Vec<PathBuf>,
 
     #[arg(
         short = 'j',
@@ -63,8 +63,24 @@ fn parse_salary(value: &str) -> Result<f64, String> {
 #[cfg(test)]
 mod tests {
     use clap::Parser;
+    use std::path::PathBuf;
 
     use super::{Cli, default_thread_count};
+
+    #[test]
+    fn defaults_to_current_directory_when_no_paths_are_provided() {
+        let cli = Cli::parse_from(["sloccrunch"]);
+        assert_eq!(cli.paths, vec![PathBuf::from(".")]);
+    }
+
+    #[test]
+    fn parses_multiple_paths() {
+        let cli = Cli::parse_from(["sloccrunch", "backend", "frontend"]);
+        assert_eq!(
+            cli.paths,
+            vec![PathBuf::from("backend"), PathBuf::from("frontend")]
+        );
+    }
 
     #[test]
     fn parses_threads_flag() {

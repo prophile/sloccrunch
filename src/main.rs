@@ -10,11 +10,11 @@ use clap::Parser;
 
 use crate::cli::Cli;
 use crate::cocomo::{estimate_nominal, format_output as format_cocomo_output};
-use crate::project::{ProjectTotals, count_project};
+use crate::project::{ProjectTotals, count_projects};
 
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
-    let totals = count_project(&cli.path, cli.threads)?;
+    let totals = count_projects(&cli.paths, cli.threads)?;
     let output = render_output(&totals, cli.costs, cli.salary);
 
     for line in output {
