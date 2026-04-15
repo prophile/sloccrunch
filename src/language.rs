@@ -32,7 +32,13 @@ pub(crate) fn detect_language(path: &Path) -> io::Result<Option<&'static str>> {
             .into_iter()
             .next()
             .filter(|language| language.definition.language_type == LanguageType::Programming)
-            .map(|language| language.definition.group.as_deref().unwrap_or(language.name)));
+            .map(|language| {
+                language
+                    .definition
+                    .group
+                    .as_deref()
+                    .unwrap_or(language.name)
+            }));
     }
 
     let mut programming_candidates = filter_programming_languages(all_candidates.clone());
@@ -96,7 +102,9 @@ fn is_known_non_source_extension(path: &Path, candidates: &[DetectedLanguage]) -
     matches!(
         extension.to_ascii_lowercase().as_str(),
         "md" | "markdown" | "mdown" | "mdwn" | "mkd" | "mkdn" | "mkdown" | "livemd"
-    ) && candidates.iter().any(|candidate| candidate.name == "Markdown")
+    ) && candidates
+        .iter()
+        .any(|candidate| candidate.name == "Markdown")
 }
 
 fn collect_language_candidates(path: &Path) -> io::Result<Vec<DetectedLanguage>> {
@@ -110,7 +118,10 @@ fn collect_language_candidates(path: &Path) -> io::Result<Vec<DetectedLanguage>>
     );
 
     for language in from_extension {
-        if candidates.iter().any(|candidate| candidate.name == language.name) {
+        if candidates
+            .iter()
+            .any(|candidate| candidate.name == language.name)
+        {
             continue;
         }
         candidates.push(language);
@@ -123,9 +134,18 @@ fn normalize_candidates(candidates: Vec<DetectedLanguage>) -> Vec<DetectedLangua
     let mut normalized = Vec::new();
 
     for language in candidates {
-        let name = language.definition.group.as_deref().unwrap_or(language.name);
+        let name = language
+            .definition
+            .group
+            .as_deref()
+            .unwrap_or(language.name);
         if normalized.iter().any(|candidate: &DetectedLanguage| {
-            candidate.definition.group.as_deref().unwrap_or(candidate.name) == name
+            candidate
+                .definition
+                .group
+                .as_deref()
+                .unwrap_or(candidate.name)
+                == name
         }) {
             continue;
         }
@@ -144,19 +164,8 @@ fn filter_programming_languages(candidates: Vec<DetectedLanguage>) -> Vec<Detect
 
 fn looks_like_rust(file_contents: &str) -> bool {
     let rust_markers = [
-        "fn ",
-        "let ",
-        "use ",
-        "pub ",
-        "mod ",
-        "impl ",
-        "trait ",
-        "enum ",
-        "struct ",
-        "::",
-        "println!",
-        "format!",
-        "match ",
+        "fn ", "let ", "use ", "pub ", "mod ", "impl ", "trait ", "enum ", "struct ", "::",
+        "println!", "format!", "match ",
     ];
 
     rust_markers

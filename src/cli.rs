@@ -1,10 +1,13 @@
 use std::path::PathBuf;
 use std::thread;
 
-use clap::Parser;
+use clap::{ArgAction, Parser};
 
 #[derive(Parser, Debug)]
-#[command(name = "sloccrunch", about = "Count source lines of code in a directory tree")]
+#[command(
+    name = "sloccrunch",
+    about = "Count source lines of code in a directory tree"
+)]
 pub(crate) struct Cli {
     #[arg(default_value = ".")]
     pub(crate) path: PathBuf,
@@ -16,6 +19,19 @@ pub(crate) struct Cli {
         value_parser = parse_thread_count
     )]
     pub(crate) threads: usize,
+
+    #[arg(long = "costs", action = ArgAction::SetTrue, overrides_with = "no_costs")]
+    pub(crate) costs: bool,
+
+    #[arg(
+        long = "no-costs",
+        action = ArgAction::SetTrue,
+        overrides_with = "costs"
+    )]
+    no_costs: bool,
+
+    #[arg(long = "salary", default_value_t = 60_000.0, value_parser = parse_salary)]
+    pub(crate) salary: f64,
 }
 
 pub(crate) fn default_thread_count() -> usize {
@@ -34,6 +50,16 @@ fn parse_thread_count(value: &str) -> Result<usize, String> {
     Ok(threads)
 }
 
+fn parse_salary(value: &str) -> Result<f64, String> {
+    let salary = value
+        .parse::<f64>()
+        .map_err(|_| format!("invalid salary: {value}"))?;
+    if salary <= 0.0 {
+        return Err("salary must be greater than 0".to_owned());
+    }
+    Ok(salary)
+}
+
 #[cfg(test)]
 mod tests {
     use clap::Parser;
@@ -47,6 +73,30 @@ mod tests {
     }
 
     #[test]
+    fn parses_costs_flag() {
+        let cli = Cli::parse_from(["sloccrunch", "--costs"]);
+        assert!(cli.costs);
+    }
+
+    #[test]
+    fn parses_no_costs_flag() {
+        let cli = Cli::parse_from(["sloccrunch", "--no-costs"]);
+        assert!(!cli.costs);
+    }
+
+    #[test]
+    fn last_cost_flag_wins() {
+        let cli = Cli::parse_from(["sloccrunch", "--costs", "--no-costs", "--costs"]);
+        assert!(cli.costs);
+    }
+
+    #[test]
+    fn parses_salary_flag() {
+        let cli = Cli::parse_from(["sloccrunch", "--salary", "75000"]);
+        assert_eq!(cli.salary, 75_000.0);
+    }
+
+    #[test]
     fn default_thread_count_is_at_least_one() {
         assert!(default_thread_count() >= 1);
     }
@@ -54,5 +104,15 @@ mod tests {
     #[test]
     fn rejects_zero_threads() {
         assert!(Cli::try_parse_from(["sloccrunch", "--threads", "0"]).is_err());
+    }
+
+    #[test]
+    fn rejects_zero_salary() {
+        assert!(Cli::try_parse_from(["sloccrunch", "--salary", "0"]).is_err());
+    }
+
+    #[test]
+    fn rejects_negative_salary() {
+        assert!(Cli::try_parse_from(["sloccrunch", "--salary", "-1"]).is_err());
     }
 }
