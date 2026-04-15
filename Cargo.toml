@@ -1,0 +1,11 @@
+[package]
+name = "sloccrunch"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.6.0", features = ["derive"] }
+file_type = { version = "0.8.11", features = ["linguist"] }
+ignore = "0.4"
+linguist = "0.1.9"
+linguist-types = "0.1.3"
