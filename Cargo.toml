@@ -2,7 +2,13 @@
 name = "sloccrunch"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 license = "CC0-1.0"
+description = "Count source lines of code in a directory tree with per-language totals and optional COCOMO estimates"
+readme = "README.md"
+repository = "https://github.com/prophile/sloccrunch"
+keywords = ["sloc", "cli", "loc", "cocomo", "linguist"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 clap = { version = "4.6.0", features = ["derive"] }
