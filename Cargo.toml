@@ -2,6 +2,7 @@
 name = "sloccrunch"
 version = "0.1.0"
 edition = "2024"
+license = "CC0-1.0"
 
 [dependencies]
 clap = { version = "4.6.0", features = ["derive"] }
