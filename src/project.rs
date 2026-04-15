@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, mpsc};
+use std::thread;
 
 use ignore::WalkBuilder;
 
@@ -13,7 +15,12 @@ pub(crate) struct ProjectTotals {
     pub(crate) by_language: HashMap<String, usize>,
 }
 
-pub(crate) fn count_project(root: &Path) -> io::Result<ProjectTotals> {
+struct FileStats {
+    language: &'static str,
+    sloc: usize,
+}
+
+pub(crate) fn count_project(root: &Path, threads: usize) -> io::Result<ProjectTotals> {
     let mut totals = ProjectTotals::default();
     let walker = WalkBuilder::new(root)
         .hidden(false)
@@ -24,25 +31,111 @@ pub(crate) fn count_project(root: &Path) -> io::Result<ProjectTotals> {
         .parents(true)
         .require_git(false)
         .build();
+    let worker_count = threads.max(1);
+    let (path_sender, path_receiver) = mpsc::sync_channel::<PathBuf>(worker_count * 4);
+    let (result_sender, result_receiver) = mpsc::channel::<io::Result<Option<FileStats>>>();
+    let shared_receiver = Arc::new(Mutex::new(path_receiver));
+    let mut workers = Vec::with_capacity(worker_count);
+
+    for _ in 0..worker_count {
+        let path_receiver = Arc::clone(&shared_receiver);
+        let result_sender = result_sender.clone();
+        workers.push(thread::spawn(move || {
+            loop {
+                let path = match path_receiver.lock() {
+                    Ok(receiver) => receiver.recv(),
+                    Err(_) => return,
+                };
+
+                let path = match path {
+                    Ok(path) => path,
+                    Err(_) => return,
+                };
+
+                let result = process_file(&path);
+                if result_sender.send(result).is_err() {
+                    return;
+                }
+            }
+        }));
+    }
+
+    drop(result_sender);
+
+    let mut file_count = 0usize;
+    let mut walk_error = None;
 
     for entry in walker {
-        let entry = entry.map_err(io::Error::other)?;
+        let entry = match entry.map_err(io::Error::other) {
+            Ok(entry) => entry,
+            Err(error) => {
+                walk_error = Some(error);
+                break;
+            }
+        };
         match entry.file_type() {
             Some(file_type) if file_type.is_file() => {}
             _ => continue,
         }
 
-        let path = entry.path();
-        let Some(language) = detect_language(path)? else {
-            continue;
-        };
+        if let Err(error) = path_sender.send(entry.path().to_path_buf()) {
+            walk_error = Some(io::Error::other(error.to_string()));
+            break;
+        }
+        file_count += 1;
+    }
 
-        let sloc = count_physical_lines(path)?;
-        totals.total_sloc += sloc;
-        *totals.by_language.entry(language.to_owned()).or_default() += sloc;
+    drop(path_sender);
+
+    let mut processing_error = None;
+
+    for _ in 0..file_count {
+        let result = result_receiver
+            .recv()
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        match result {
+            Ok(Some(file_stats)) => {
+                totals.total_sloc += file_stats.sloc;
+                *totals
+                    .by_language
+                    .entry(file_stats.language.to_owned())
+                    .or_default() += file_stats.sloc;
+            }
+            Ok(None) => {}
+            Err(error) if processing_error.is_none() => processing_error = Some(error),
+            Err(_) => {}
+        }
+    }
+
+    join_workers(workers)?;
+
+    if let Some(error) = walk_error {
+        return Err(error);
+    }
+    if let Some(error) = processing_error {
+        return Err(error);
     }
 
     Ok(totals)
+}
+
+fn process_file(path: &Path) -> io::Result<Option<FileStats>> {
+    let Some(language) = detect_language(path)? else {
+        return Ok(None);
+    };
+
+    let sloc = count_physical_lines(path)?;
+    Ok(Some(FileStats { language, sloc }))
+}
+
+fn join_workers(workers: Vec<thread::JoinHandle<()>>) -> io::Result<()> {
+    for worker in workers {
+        worker
+            .join()
+            .map_err(|_| io::Error::other("worker thread panicked"))?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -64,7 +157,7 @@ mod tests {
         fixture.write("README.md", "# title\nbody\n")?;
         fixture.write("nested/skip.rs", "fn also_skipped() {}\n")?;
 
-        let totals = count_project(fixture.path())?;
+        let totals = count_project(fixture.path(), 2)?;
 
         assert_eq!(totals.total_sloc, 6);
         assert_eq!(totals.by_language.get("Rust"), Some(&6));
@@ -81,7 +174,7 @@ mod tests {
             "export const answer: number = 42;\nfunction greet(name: string): string {\n  return name;\n}\n",
         )?;
 
-        let totals = count_project(fixture.path())?;
+        let totals = count_project(fixture.path(), 2)?;
 
         assert_eq!(totals.total_sloc, 4);
         assert_eq!(totals.by_language.get("TypeScript"), Some(&4));
@@ -94,7 +187,7 @@ mod tests {
         let fixture = TempProject::new()?;
         fixture.write(".hidden.rs", "fn visible() {}\n")?;
 
-        let totals = count_project(fixture.path())?;
+        let totals = count_project(fixture.path(), 2)?;
 
         assert_eq!(totals.total_sloc, 1);
         assert_eq!(totals.by_language.get("Rust"), Some(&1));

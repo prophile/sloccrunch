@@ -12,7 +12,7 @@ use crate::project::count_project;
 
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
-    let totals = count_project(&cli.path)?;
+    let totals = count_project(&cli.path, cli.threads)?;
 
     let mut by_language: Vec<_> = totals.by_language.into_iter().collect();
     by_language.sort_by(|(left_name, left_total), (right_name, right_total)| {
