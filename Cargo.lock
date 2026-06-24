@@ -248,9 +248,9 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "linguist"
-version = "0.1.9"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b4e96f85311249a1817ed57a3b64596e1c7271a6d5c9eb23b3feb5d25e77b3d"
+checksum = "8770b251cb72fcd4871d9d657aaee00f71f9ac293ee69af498619fc1e958d195"
 dependencies = [
  "clap",
  "fancy-regex",
